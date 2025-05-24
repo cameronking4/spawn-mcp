@@ -27,7 +27,7 @@
     "build": "tsc",
     "generate": "drizzle-kit generate:pg",
     "migrate": "ts-node -e 'import { migrate } from \"drizzle-orm/node-postgres/migrator\"; import { db } from \"./drizzle/db\"; migrate(db, { migrationsFolder: \"./drizzle/migrations\" })'",
-    "postinstall": "npm run build && npm run migrate"
+    "postinstall": "npm run build"
   },
   "engines": {
     "node": ">=18.0.0"
