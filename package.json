@@ -17,6 +17,7 @@
     "@types/express": "^4.17.21",
     "@types/node": "^20.10.0",
     "@types/pg": "^8.10.9",
+    "concurrently": "^9.1.2",
     "drizzle-kit": "^0.19.13",
     "ts-node": "^10.9.1",
     "typescript": "^5.2.2"
@@ -24,10 +25,15 @@
   "scripts": {
     "start": "node dist/server.js",
     "dev": "ts-node server.ts",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:all": "concurrently \"npm run dev\" \"npm run dev:frontend\"",
     "build": "tsc",
+    "build:frontend": "cd frontend && npm run build",
+    "build:all": "npm run build && npm run build:frontend",
     "generate": "drizzle-kit generate:pg",
     "migrate": "ts-node -e 'import { migrate } from \"drizzle-orm/node-postgres/migrator\"; import { db } from \"./drizzle/db\"; migrate(db, { migrationsFolder: \"./drizzle/migrations\" })'",
-    "postinstall": "npm run build && npm run migrate"
+    "postinstall": "npm run build && npm run migrate",
+    "setup": "npm install && cd frontend && npm install"
   },
   "engines": {
     "node": ">=18.0.0"

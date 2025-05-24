@@ -57,6 +57,8 @@ app.post('/api/configs', async (req, res) => {
   try {
     const { name, config } = req.body;
     
+    console.log('Received config:', JSON.stringify(config, null, 2));
+    
     if (!name || !config) {
       return res.status(400).json({ error: 'Name and config are required' });
     }
@@ -70,6 +72,60 @@ app.post('/api/configs', async (req, res) => {
   } catch (error) {
     console.error('Error creating config:', error);
     res.status(500).json({ error: 'Failed to create configuration' });
+  }
+});
+
+// Update an existing MCP configuration
+app.put('/api/configs/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { name, config } = req.body;
+    
+    console.log('Updating config:', id, 'with data:', JSON.stringify(config, null, 2));
+    
+    if (!name || !config) {
+      return res.status(400).json({ error: 'Name and config are required' });
+    }
+    
+    // Validate that config has mcpServers property
+    if (!config.mcpServers) {
+      console.error('Invalid config format: missing mcpServers property');
+      return res.status(400).json({ error: 'Configuration must have a mcpServers property' });
+    }
+    
+    const result = await db.update(mcpConfigs)
+      .set({ name, config })
+      .where(eq(mcpConfigs.id, id))
+      .returning();
+    
+    if (result.length === 0) {
+      return res.status(404).json({ error: 'Configuration not found' });
+    }
+    
+    res.json(result[0]);
+  } catch (error) {
+    console.error('Error updating config:', error);
+    res.status(500).json({ error: 'Failed to update configuration' });
+  }
+});
+
+// Delete a configuration
+app.delete('/api/configs/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    
+    const result = await db.delete(mcpConfigs)
+      .where(eq(mcpConfigs.id, id))
+      .returning();
+    
+    if (result.length === 0) {
+      return res.status(404).json({ error: 'Configuration not found' });
+    }
+    
+    res.json({ message: 'Configuration deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting config:', error);
+    res.status(500).json({ error: 'Failed to delete configuration' });
   }
 });
 
@@ -93,7 +149,7 @@ app.get('/sse/:id', async (req, res) => {
     });
     
     // Send initial connection message
-    res.write(`event: connected\ndata: {"id": ${id}}\n\n`);
+    res.write(`event: connected\ndata: {"id": ${id}, "config": ${JSON.stringify(configResult[0])}}\n\n`);
     
     // Store the connection
     const connectionId = `${id}-${Date.now()}`;
@@ -102,6 +158,7 @@ app.get('/sse/:id', async (req, res) => {
     // Handle client disconnect
     req.on('close', () => {
       if (activeConnections[connectionId]?.process) {
+        console.log(`Killing process for connection: ${connectionId}`);
         activeConnections[connectionId].process?.kill();
       }
       delete activeConnections[connectionId];
@@ -117,6 +174,8 @@ app.get('/sse/:id', async (req, res) => {
       return res.end();
     }
     
+    console.log(`Spawning MCP process for connection ${connectionId}: ${serverConfig.command} ${(serverConfig.args || []).join(' ')}`);
+    
     // Spawn the MCP server process
     const mcpProcess = spawn(serverConfig.command, serverConfig.args || []);
     activeConnections[connectionId].process = mcpProcess;
@@ -125,37 +184,91 @@ app.get('/sse/:id', async (req, res) => {
     mcpProcess.stdout.on('data', (data) => {
       const lines = data.toString().split('\n').filter(Boolean);
       for (const line of lines) {
+        console.log(`[${connectionId}] stdout: ${line}`);
         res.write(`event: message\ndata: ${line}\n\n`);
       }
     });
     
     // Handle process stderr (errors and events)
     mcpProcess.stderr.on('data', (data) => {
+      console.log(`[${connectionId}] stderr: ${data.toString()}`);
       res.write(`event: error\ndata: ${JSON.stringify({ error: data.toString() })}\n\n`);
     });
     
     // Handle process exit
     mcpProcess.on('close', (code) => {
+      console.log(`[${connectionId}] Process exited with code: ${code}`);
       res.write(`event: close\ndata: {"code": ${code}}\n\n`);
       res.end();
       delete activeConnections[connectionId];
     });
     
-    // Send a sample prompt to the MCP server
-    // This is just a basic example - in a real app, this would come from the client
-    const samplePrompt = {
-      context: [
-        { role: "system", content: "You are a helpful assistant." },
-        { role: "user", content: "Hello, world!" }
-      ],
-      stream: true
-    };
+    // Keep the process alive but don't send an initial prompt
+    // The client will send prompts via the /api/prompt/:id endpoint
     
-    mcpProcess.stdin.write(JSON.stringify(samplePrompt));
-    mcpProcess.stdin.end();
+    // Send a heartbeat every 30 seconds to keep the connection alive
+    const heartbeatInterval = setInterval(() => {
+      if (activeConnections[connectionId]) {
+        res.write(`event: heartbeat\ndata: {"timestamp": ${Date.now()}}\n\n`);
+      } else {
+        clearInterval(heartbeatInterval);
+      }
+    }, 30000);
     
   } catch (error) {
     console.error('Error in SSE endpoint:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Endpoint to send prompts to an active SSE connection
+app.post('/api/prompt/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { prompt } = req.body;
+    
+    if (!prompt) {
+      return res.status(400).json({ error: 'Prompt is required' });
+    }
+    
+    // Find all active connections for this config ID
+    const connectionIds = Object.keys(activeConnections).filter(key => key.startsWith(`${id}-`));
+    
+    if (connectionIds.length === 0) {
+      return res.status(404).json({ error: 'No active connections found for this configuration' });
+    }
+    
+    // Send the prompt to all active connections
+    let successCount = 0;
+    for (const connectionId of connectionIds) {
+      const connection = activeConnections[connectionId];
+      if (connection?.process) {
+        try {
+          console.log(`Sending prompt to connection ${connectionId}:`, JSON.stringify(prompt));
+          if (connection.process && connection.process.stdin) {
+            connection.process.stdin.write(JSON.stringify(prompt) + '\n');
+            successCount++;
+          } else {
+            console.error(`Process or stdin is null for connection ${connectionId}`);
+          }
+        } catch (error) {
+          console.error(`Error sending prompt to connection ${connectionId}:`, error);
+        }
+      }
+    }
+    
+    if (successCount === 0) {
+      return res.status(500).json({ error: 'Failed to send prompt to any active connections' });
+    }
+    
+    res.json({ 
+      success: true, 
+      message: `Prompt sent to ${successCount} active connections`,
+      connectionCount: connectionIds.length
+    });
+    
+  } catch (error) {
+    console.error('Error sending prompt:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
