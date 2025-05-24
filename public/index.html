@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MCP SSE Server</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Model Context Protocol SSE Server</h1>
+      <p>Create and manage MCP server configurations and SSE endpoints</p>
+    </header>
+
+    <main>
+      <section class="config-form">
+        <h2>Create New Configuration</h2>
+        <form id="config-form">
+          <div class="form-group">
+            <label for="config-name">Configuration Name</label>
+            <input type="text" id="config-name" name="name" required placeholder="e.g., My Playwright MCP">
+          </div>
+          
+          <div class="form-group">
+            <label for="config-json">Configuration JSON</label>
+            <textarea id="config-json" name="config" rows="10" required placeholder='{"mcpServers": {"playwright": {"command": "npx", "args": ["@playwright/mcp@latest"]}}}'></textarea>
+          </div>
+          
+          <div class="form-actions">
+            <button type="button" id="validate-btn">Validate JSON</button>
+            <button type="submit" id="save-btn">Save Configuration</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="saved-configs">
+        <h2>Saved Configurations</h2>
+        <div id="configs-list" class="configs-list">
+          <p class="loading">Loading configurations...</p>
+        </div>
+      </section>
+
+      <section class="test-section">
+        <h2>Test SSE Connection</h2>
+        <div class="form-group">
+          <label for="sse-url">SSE URL</label>
+          <input type="text" id="sse-url" placeholder="Paste SSE URL here" readonly>
+          <button id="copy-url-btn">Copy URL</button>
+        </div>
+        <div class="form-actions">
+          <button id="connect-btn" disabled>Connect to SSE</button>
+          <button id="disconnect-btn" disabled>Disconnect</button>
+        </div>
+        <div class="sse-output">
+          <h3>SSE Output</h3>
+          <pre id="sse-output"></pre>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>Model Context Protocol SSE Server POC</p>
+    </footer>
+  </div>
+
+  <script src="js/main.js"></script>
+  <script src="js/sse.js"></script>
+</body>
+</html>
