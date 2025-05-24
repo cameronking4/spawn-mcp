@@ -1,6 +1,6 @@
 # MCP SSE Server POC
 
-A proof-of-concept server for Model Context Protocol (MCP) with Server-Sent Events (SSE) streaming, deployable on Render with zero infrastructure work.
+A proof-of-concept server for STDIO transport od Model Context Protocol (MCP) into instant Server-Sent Events (SSE) streaming, deployable as a service. Instant remote hosted MCP servers with zero infrastructure work.
 
 ## Features
 
